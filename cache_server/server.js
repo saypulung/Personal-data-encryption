@@ -1,11 +1,12 @@
 require('dotenv').config({ path: '../.env'});
 const encryption = require('./encryption');
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize, DataTypes, Op } = require('sequelize');
 const express = require('express');
 const app = express();
+app.use(express.urlencoded({ extended: false }));
 const app_port = 3000;
 
-const personCache = new Sequelize('sqlite::memory:');
+const personCache = new Sequelize({ dialect: 'sqlite', storage: ':memory:'});
 
 const db_host = process.env.DB_HOST;
 const db_pass = process.env.DB_PASS;
@@ -76,7 +77,6 @@ const secret_key = process.env.CREDENTIALS_TO_JS;
 
 async function queryDb (offset, limit) {
     const people = await Person.findAll({ limit, offset });
-    console.log(people);
     for (var i = 0; i < people.length; i++) {
         const p = people[i];
         const word = [];
@@ -96,8 +96,6 @@ async function queryDb (offset, limit) {
             col_name: 'cecar'
         });
         const pCache = await DictionaryCache.bulkCreate(word);
-        console.log('save to cache');
-        console.log(pCache);
         await Person.update(
             {
                 idx_nik: pCache[0].id,
@@ -125,34 +123,106 @@ async function parseEncryptedToMemory()
 
 parseEncryptedToMemory();
 
-// const encrypted = encryption.encrypt('namaku bento', password);
-// console.log(encrypted);
-// const decrypted = encryption.decrypt(encrypted, password);
-// console.log(decrypted);
-
 app.get('/', async (req, res) => {
     const people = await Person.findAll();
-    console.log(people);
 
-    const peopleInCache = await DictionaryCache.findAll();
-    console.log(peopleInCache);
+    const peopleInCache = (await DictionaryCache.findAll())
+        .map(item => {
+            return {col: item.col_name, word: item.word};
+        });
     res.send('Wakwau');
 });
 
 app.post('/save-cache', async (req, res) => {
-    
+    const { secret } = req.params;
+    if (!secret || secret !== secret_key ) {
+        res.send('NO');
+        return;
+    }
+    const { id, nik, name, cecar } = req.body;
+    word.push({
+        user_id: id,
+        word: encryption.decrypt(nik, password),
+        col_name: 'nik'
+    });
+    word.push({
+        user_id: id,
+        word: encryption.decrypt(name, password),
+        col_name: 'name'
+    });
+    word.push({
+        user_id: id,
+        word: encryption.decrypt(cecar, password),
+        col_name: 'cecar'
+    });
+    const pCache = await DictionaryCache.bulkCreate(word);
+    await Person.update(
+        {
+            idx_nik: pCache[0].id,
+            idx_name: pCache[1].id,
+            idx_cc: pCache[2].id
+        },
+        {
+            where: { id: p.id }
+        }
+    );
+    res.send('OK');
 });
 
 app.put('/update-cache', async (req, res) => {
-    const people = Person.findAll();
+    const { secret } = req.params;
+    if (!secret || secret !== secret_key ) {
+        res.send('NO');
+        return;
+    }
+
+    const { people } = req.body;
     console.log(people);
-    res.send('Wakwau');
+    res.send('Wakwau cache');
 });
 
 app.put('/delete-cache', async (req, res) => {
-    const people = Person.findAll();
-    console.log(people);
-    res.send('Wakwau');
+    const { secret } = req.params;
+    if (!secret || secret !== secret_key ) {
+        res.send('NO');
+        return;
+    }
+    
+    const { id } = req.body;
+    if (!id) {
+        res.send('NO');
+        return;
+    }
+
+    await DictionaryCache.destroy({
+        where: {
+            user_id: id,
+        }
+    });
+    res.send('OK');
+});
+
+app.get('/like-search', async (req, res) => {
+    const { secret } = req.query;
+    if (!secret || secret !== secret_key ) {
+        res.json({ data : [] });
+        return;
+    }
+
+    const { name } = req.body;
+    const pDicts = await DictionaryCache.findAll(
+        {
+            attributes: ['user_id'],
+            group: 'user_id',
+            where: {
+                col_name: 'name',
+                word: {
+                    [Op.like]: `%${name}%`
+                }
+            }
+        }
+    );
+    res.json({data : pDicts.map(i => i.user_id )});
 });
 
 app.listen(app_port, () => {
