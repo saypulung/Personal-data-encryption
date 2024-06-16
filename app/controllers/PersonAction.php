@@ -11,10 +11,35 @@ final class PersonAction
 {
     public function datatable(Request $request, Response $response): Response
     {
+        $allowedSearch = ["name"];
+        $searchQuery = [];
+        $QS = $request->getQueryParams();
+        foreach ($QS as $key => $val) {
+            if (in_array($key, $allowedSearch)) $searchQuery[$key] = $val;
+        }
+        $personQ = Person::select("*");
+
+        if (isset($QS['nik'])) {
+            $nikEnc = encrypt($QS['nik']);
+            $personQ->where('nik', $nikEnc);
+        }
+
+        if (isset($QS['cecar'])) {
+            $nikEnc = encrypt($QS['cecar']);
+            $personQ->where('cecar', $nikEnc);
+        }
+
+        $subQuery = "";
+        if (isset($searchQuery['name'])) {
+            $sessionId = session_id();
+            // call NodeJS API to define TEMPIDS to perform LIKE search by sessionId
+
+        }
+
         $data = [
             'message'   => 'Welcome to Slim API',
             'encrypted_message'   => encrypt('Welcome to Slim API'),
-            'person'    => Person::all(),
+            'person'    => $personQ->get()->toArray(),
         ];
         $response->getBody()->write(json_encode($data));
         return $response
