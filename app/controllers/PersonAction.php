@@ -33,13 +33,25 @@ final class PersonAction
         if (isset($searchQuery['name'])) {
             $sessionId = session_id();
             // call NodeJS API to define TEMPIDS to perform LIKE search by sessionId
-
+            $nameQuery = urlencode($searchQuery['name']);
+            $urlBlindServer = $_ENV['BLIND_SERVER'] . 'like-search?name=' . $nameQuery
+                . '&secret='.$_ENV['CREDENTIALS_TO_JS'] . '&sessionId=' . $sessionId;
+            $dataIds = performLikeSearch($urlBlindServer, '');
+            if (!empty($dataIds)) {
+                $personQ->whereIn('id', $dataIds['data']);
+            }
         }
 
+        $people = $personQ->get()->toArray();
+        $people = array_map(function ($v) {
+            $v['name'] = decrypt($v['name']);
+            $v['nik']  = decrypt($v['nik']);
+            $v['cecar']= decrypt($v['cecar']);
+            return $v;
+        }, $people);
+
         $data = [
-            'message'   => 'Welcome to Slim API',
-            'encrypted_message'   => encrypt('Welcome to Slim API'),
-            'person'    => $personQ->get()->toArray(),
+            'person'    => $people,
         ];
         $response->getBody()->write(json_encode($data));
         return $response
@@ -59,7 +71,15 @@ final class PersonAction
         foreach (['name', 'nik', 'cecar'] as $key) {
             $respData[$key] = decrypt($respData[$key]);
         }
-        $response->getBody()->write(json_encode($respData));
+        $urlAdd = $_ENV['BLIND_SERVER'].'save-cache?secret='.$_ENV['CREDENTIALS_TO_JS'];
+        $blindResp = sendToBlindServer($urlAdd, $respData);
+
+        $response->getBody()->write(
+            json_encode([
+                'person' => $respData,
+                'blindResp' => $blindResp
+            ])
+        );
         return $response
             ->withHeader('Content-Type', 'application/json')
             ->withStatus(200);
@@ -78,7 +98,16 @@ final class PersonAction
         foreach (['name', 'nik', 'cecar'] as $key) {
             $respData[$key] = decrypt($respData[$key]);
         }
-        $response->getBody()->write(json_encode($respData));
+
+        $urlAdd = $_ENV['BLIND_SERVER'].'update-cache?secret='.$_ENV['CREDENTIALS_TO_JS'];
+        $blindResp = sendToBlindServer($urlAdd, $respData, 'put');
+
+        $response->getBody()->write(
+            json_encode([
+                'person' => $respData,
+                'blindResp' => $blindResp
+            ])
+        );
         return $response
             ->withHeader('Content-Type', 'application/json')
             ->withStatus(200);
@@ -87,7 +116,11 @@ final class PersonAction
     public function delete(Request $request, Response $response, $args): Response
     {
         $person = Person::find($args['id']);
+        $arrayPerson = $person->toArray();
         $person->delete();
+        $urlAdd = $_ENV['BLIND_SERVER'].'delete-cache?secret='.$_ENV['CREDENTIALS_TO_JS'];
+        $blindResp = sendToBlindServer($urlAdd, $arrayPerson, 'delete');
+
         $response->getBody()->write(json_encode(['message' => 'Data deleted']));
         return $response
             ->withHeader('Content-Type', 'application/json')

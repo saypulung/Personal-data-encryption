@@ -1,6 +1,6 @@
 require('dotenv').config({ path: '../.env'});
 const encryption = require('./encryption');
-const { Sequelize, DataTypes, Op } = require('sequelize');
+const { Sequelize, DataTypes, Op, where } = require('sequelize');
 const express = require('express');
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -134,25 +134,26 @@ app.get('/', async (req, res) => {
 });
 
 app.post('/save-cache', async (req, res) => {
-    const { secret } = req.params;
+    const { secret } = req.query;
     if (!secret || secret !== secret_key ) {
         res.send('NO');
         return;
     }
     const { id, nik, name, cecar } = req.body;
+    const word = [];
     word.push({
         user_id: id,
-        word: encryption.decrypt(nik, password),
+        word: nik,
         col_name: 'nik'
     });
     word.push({
         user_id: id,
-        word: encryption.decrypt(name, password),
+        word: name,
         col_name: 'name'
     });
     word.push({
         user_id: id,
-        word: encryption.decrypt(cecar, password),
+        word: cecar,
         col_name: 'cecar'
     });
     const pCache = await DictionaryCache.bulkCreate(word);
@@ -163,26 +164,63 @@ app.post('/save-cache', async (req, res) => {
             idx_cc: pCache[2].id
         },
         {
-            where: { id: p.id }
+            where: { id: id }
         }
     );
     res.send('OK');
 });
 
 app.put('/update-cache', async (req, res) => {
-    const { secret } = req.params;
+    const { secret } = req.query;
     if (!secret || secret !== secret_key ) {
         res.send('NO');
         return;
     }
 
-    const { people } = req.body;
-    console.log(people);
-    res.send('Wakwau cache');
+    const { id, nik, name, cecar } = req.body;
+    const person = await Person.findOne({
+        where: {
+            id
+        }
+    });
+    const idxNik = person.idx_nik;
+    const idxName = person.idx_name;
+    const idxCc = person.idx_cc;
+    await DictionaryCache.update(
+        {
+            word: nik,
+        },
+        {
+            where: {
+                id: idxNik
+            }
+        }
+    );
+    await DictionaryCache.update(
+        {
+            word: name,
+        },
+        {
+            where: {
+                id: idxName
+            }
+        }
+    );
+    await DictionaryCache.update(
+        {
+            word: cecar,
+        },
+        {
+            where: {
+                id: idxCc
+            }
+        }
+    );
+    res.send('OK');
 });
 
-app.put('/delete-cache', async (req, res) => {
-    const { secret } = req.params;
+app.delete('/delete-cache', async (req, res) => {
+    const { secret } = req.query;
     if (!secret || secret !== secret_key ) {
         res.send('NO');
         return;
@@ -209,7 +247,7 @@ app.get('/like-search', async (req, res) => {
         return;
     }
 
-    const { name } = req.body;
+    const { name } = req.query;
     const pDicts = await DictionaryCache.findAll(
         {
             attributes: ['user_id'],

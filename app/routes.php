@@ -11,5 +11,5 @@ return function (App $app) {
     $app->get('/datatable-person', PersonAction::class.':datatable');
     $app->post('/', PersonAction::class.':add');
     $app->put('/{id}', PersonAction::class.':update');
-    $app->delete('/', PersonAction::class.':delete');
+    $app->delete('/{id}', PersonAction::class.':delete');
 };

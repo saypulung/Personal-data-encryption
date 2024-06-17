@@ -41,6 +41,8 @@ return [
         $capsule->bootEloquent();
         $capsule->setAsGlobal();
         $container->set('db', $capsule);
+        $app->addBodyParsingMiddleware();
+        $app->addRoutingMiddleware();
 
         (require __DIR__ . '/routes.php')($app);
 
